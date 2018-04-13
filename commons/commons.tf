@@ -1,14 +1,20 @@
 provider "aws" {
   region = "${var.region}"
+  shared_credentials_file = "~/.aws/credentials"
+  profile = "clouduct"
 }
 
 variable "region" {
   default = "eu-central-1"
 }
 
-variable "environment" {
-  default = "dev"
+variable "environments" {
+  type = list
+  default = ["dev", "stage", "prod"]
 }
 
-variable "project_name" {}
+variable "project_name" {
+  default = "clouduct"
+}
 
+variable "state_key" {}
