@@ -9,12 +9,15 @@ variable "region" {
 }
 
 variable "environments" {
-  type = list
+  type = "list"
   default = ["dev", "stage", "prod"]
 }
 
 variable "project_name" {
-  default = "clouduct"
+  default = "clouduct1"
 }
 
-variable "state_key" {}
+variable "environment" {
+  default = "dev"
+}
+
