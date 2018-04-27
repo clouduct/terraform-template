@@ -1,0 +1,154 @@
+#!/usr/bin/env bash
+
+set -e
+
+
+ALL_STAGES="network storage compute build"
+ALL_ENVS="dev test int prod"
+
+# --------------------------------------------------------------------------------------------------
+# PREPARE
+# --------------------------------------------------------------------------------------------------
+
+TWRAP_CONFIG_FILE=".twrap"
+
+# ensure we're executing in the correct directory
+SCRIPT_DIR=$(cd "$(dirname "$0")"; pwd)
+cd "${SCRIPT_DIR}"
+
+BASENAME=$(basename "$0")
+
+# check for existence of config file
+if [ -e "$TWRAP_CONFIG_FILE" ]; then
+  source "${TWRAP_CONFIG_FILE}"
+else
+  echo "Could not find configuration file ${TWRAP_CONFIG_FILE}"
+  exit 1
+fi
+
+if [[ -z $CLOUDUCT_PROJECTNAME ]]; then
+  echo "missing environment variable CLOUDUCT_PROJECTNAME"
+  echo "should have been set in $TWRAP_CONFIG_FILE"
+  exit 1
+fi
+
+if [[ -z $CLOUDUCT_REGION ]]; then
+  echo "missing environment variable CLOUDUCT_REGION"
+  echo "should have been set in $TWRAP_CONFIG_FILE"
+  exit 1
+fi
+
+
+ALL_STAGES_ALT="${ALL_STAGES// /|}"
+ALL_ENVS_ALT="${ALL_ENVS// /|}"
+
+usage() {
+  echo "Usage:"
+  echo "  ${BASENAME} [env] [stage] [command]"
+  echo "  "
+  echo "     env           ${ALL_ENVS_ALT} -- default: dev"
+  echo "     stage         ${ALL_STAGES_ALT} -- if omitted all stages will be executed"
+  echo "     command       plan|apply|destroy ('init' can only be called once) -- default: plan"
+  echo "  "
+}
+
+trim() {
+  echo "$*" | sed -e 's/ $//' -e 's/^ //'
+}
+
+
+# allow to use the variable as match against possible command line arguments:
+shopt -s extglob
+ALL_STAGES_TEST="+($ALL_STAGES_ALT)"
+ALL_ENVS_TEST="+($ALL_ENVS_ALT)"
+
+# parse the command line arguments
+while [[ $# -gt 0 ]]; do
+  case $1 in
+      $ALL_ENVS_TEST)
+        if [ -z ${ENVIRONMENT} ]; then
+          ENVIRONMENT="$1"
+        else
+          echo "ERROR: environment has been set twice: $ENVIRONMENT $1"
+          echo
+          usage
+          exit 1
+        fi
+        shift
+      ;;
+      $ALL_STAGES_TEST) STAGES="$1 $STAGES";  shift
+      ;;
+      init|plan|apply|destroy)
+        if [ -z ${terraform_command} ]; then
+          terraform_command="$1"
+        else
+          echo "ERROR: command has been set twice: $terraform_command $1"
+          echo
+          usage
+          exit 1
+        fi
+        shift
+      ;;
+      --help) usage; exit 0
+      ;;
+      *) echo "Unknown option: $1"; usage; exit 1
+      ;;
+  esac
+done
+
+# default command: plan
+terraform_command=${terraform_command:-plan}
+
+if [[ "${STAGES}" = "" ]]; then
+  STAGES_IN_EXEC_ORDER=$ALL_STAGES
+else
+  # ensure the stages are in the correct order
+  STAGES=$(echo "$STAGES" | sed -e 's/ $//' -e 's/ /\|/')
+  for stage in $ALL_STAGES; do
+    if [[ $stage =~ .*${STAGES}.* ]]; then
+      STAGES_IN_EXEC_ORDER="$STAGES_IN_EXEC_ORDER $stage"
+    fi
+  done
+fi
+
+STAGES_IN_EXEC_ORDER=$(trim $STAGES_IN_EXEC_ORDER)
+
+echo "$CLOUDUCT_PROJECTNAME env: ($ENVIRONMENT) stages: ($STAGES_IN_EXEC_ORDER) command: ($terraform_command)"
+
+# ensure if the NAME-infra directory exists:
+INFRA_DIR="${CLOUDUCT_PROJECTNAME}-infra"
+if [ ! -d "${INFRA_DIR}" ]; then
+  echo "could not find directory ${INFRA_DIR}"
+  exit 2
+fi
+
+# --------------------------------------------------------------------------------------------------
+# EXECUTE
+# --------------------------------------------------------------------------------------------------
+
+# TODO INTERMEDIATE_DIR="terrorform"
+
+for stage in ${STAGES_IN_EXEC_ORDER}; do
+  echo "${INFRA_DIR}/$stage"
+  pushd "${INFRA_DIR}/$stage" > /dev/null
+
+  # terraform get
+
+  # if [[ "${terraform_command}" ==  'init' ]]; then
+  #   terraform init \
+  #       -backend-config "project_name=${CLOUDUCT_PROJECTNAME}" \
+  #       -backend-config "environment=${ENVIRONMENT}" \
+  #       -backend-config "region=${region}"
+  # else
+  #   terraform "${terraform_command}" \
+  #       -var "project_name=${CLOUDUCT_PROJECTNAME}" \
+  #       -var "environment=${environment}" \
+  #       -var "region=${region}"
+  # fi
+
+  popd > /dev/null
+
+done
+
+exit 0
+
