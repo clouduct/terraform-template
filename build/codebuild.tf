@@ -1,18 +1,18 @@
 resource "aws_codebuild_project" "" {
 
   artifacts {
-    type = ""
+    type = "NO_ARTIFACTS"
   }
 
   environment {
-    compute_type = ""
-    image = ""
-    type = ""
+    compute_type = "BUILD_GENERAL1_SMALL"
+    image = "aws/codebuild/eb-java-8-amazonlinux-64:2.4.3"
+    type = "LINUX_CONTAINER"
   }
   name = ""
 
   source {
-    type = "CODEPIPELINE"
+    type = "CODECOMMIT"
   }
 }
 
