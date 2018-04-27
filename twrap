@@ -3,7 +3,7 @@
 set -e
 
 
-ALL_STAGES="network storage compute build"
+ALL_PHASES="network storage compute build"
 ALL_ENVS="dev test int prod"
 
 # --------------------------------------------------------------------------------------------------
@@ -39,15 +39,15 @@ if [[ -z $CLOUDUCT_REGION ]]; then
 fi
 
 
-ALL_STAGES_ALT="${ALL_STAGES// /|}"
+ALL_PHASES_ALT="${ALL_PHASES// /|}"
 ALL_ENVS_ALT="${ALL_ENVS// /|}"
 
 usage() {
   echo "Usage:"
-  echo "  ${BASENAME} [env] [stage] [command]"
+  echo "  ${BASENAME} [env] [phase] [command]"
   echo "  "
   echo "     env           ${ALL_ENVS_ALT} -- default: dev"
-  echo "     stage         ${ALL_STAGES_ALT} -- if omitted all stages will be executed"
+  echo "     phase         ${ALL_PHASES_ALT} -- if omitted all phases will be executed"
   echo "     command       plan|apply|destroy ('init' can only be called once) -- default: plan"
   echo "  "
 }
@@ -59,7 +59,7 @@ trim() {
 
 # allow to use the variable as match against possible command line arguments:
 shopt -s extglob
-ALL_STAGES_TEST="+($ALL_STAGES_ALT)"
+ALL_PHASES_TEST="+($ALL_PHASES_ALT)"
 ALL_ENVS_TEST="+($ALL_ENVS_ALT)"
 
 # parse the command line arguments
@@ -76,7 +76,7 @@ while [[ $# -gt 0 ]]; do
         fi
         shift
       ;;
-      $ALL_STAGES_TEST) STAGES="$1 $STAGES";  shift
+      $ALL_PHASES_TEST) PHASES="$1 $PHASES";  shift
       ;;
       init|plan|apply|destroy)
         if [ -z ${terraform_command} ]; then
@@ -99,21 +99,21 @@ done
 # default command: plan
 terraform_command=${terraform_command:-plan}
 
-if [[ "${STAGES}" = "" ]]; then
-  STAGES_IN_EXEC_ORDER=$ALL_STAGES
+if [[ "${PHASES}" = "" ]]; then
+  PHASES_IN_EXEC_ORDER=$ALL_PHASES
 else
-  # ensure the stages are in the correct order
-  STAGES=$(echo "$STAGES" | sed -e 's/ $//' -e 's/ /\|/')
-  for stage in $ALL_STAGES; do
-    if [[ $stage =~ .*${STAGES}.* ]]; then
-      STAGES_IN_EXEC_ORDER="$STAGES_IN_EXEC_ORDER $stage"
+  # ensure the phasess are in the correct order
+  PHASES=$(echo "$PHASES" | sed -e 's/ $//' -e 's/ /\|/')
+  for phase in $ALL_PHASES; do
+    if [[ $phase =~ .*${PHASES}.* ]]; then
+      PHASES_IN_EXEC_ORDER="$PHASES_IN_EXEC_ORDER $phase"
     fi
   done
 fi
 
-STAGES_IN_EXEC_ORDER=$(trim $STAGES_IN_EXEC_ORDER)
+PHASES_IN_EXEC_ORDER=$(trim $PHASES_IN_EXEC_ORDER)
 
-echo "$CLOUDUCT_PROJECTNAME env: ($ENVIRONMENT) stages: ($STAGES_IN_EXEC_ORDER) command: ($terraform_command)"
+echo "$CLOUDUCT_PROJECTNAME env: ($ENVIRONMENT) phases: ($PHASES_IN_EXEC_ORDER) command: ($terraform_command)"
 
 # ensure if the NAME-infra directory exists:
 INFRA_DIR="${CLOUDUCT_PROJECTNAME}-infra"
@@ -128,9 +128,9 @@ fi
 
 # TODO INTERMEDIATE_DIR="terrorform"
 
-for stage in ${STAGES_IN_EXEC_ORDER}; do
-  echo "${INFRA_DIR}/$stage"
-  pushd "${INFRA_DIR}/$stage" > /dev/null
+for phase in ${PHASES_IN_EXEC_ORDER}; do
+  echo "${INFRA_DIR}/$phase"
+  pushd "${INFRA_DIR}/$phase" > /dev/null
 
   # terraform get
 
