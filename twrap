@@ -48,7 +48,7 @@ usage() {
   echo "  "
   echo "     env           ${ALL_ENVS_ALT} -- default: dev"
   echo "     phase         ${ALL_PHASES_ALT} -- if omitted all phases will be executed"
-  echo "     command       plan|apply|destroy ('init' can only be called once) -- default: plan"
+  echo "     command       plan|apply|destroy ('bootstrap' can only be called once) -- default: plan"
   echo "  "
 }
 
@@ -56,45 +56,48 @@ trim() {
   echo "$*" | sed -e 's/ $//' -e 's/^ //'
 }
 
+contains() {
+  local item="$1"
+  local list="$2"
+
+  if [[ " $list " =~ " $item " ]]; then
+    return 0
+  else
+    return 1
+  fi
+}
 
 # allow to use the variable as match against possible command line arguments:
 shopt -s extglob
 ALL_PHASES_TEST="+($ALL_PHASES_ALT)"
 ALL_ENVS_TEST="+($ALL_ENVS_ALT)"
 
-# parse the command line arguments
-while [[ $# -gt 0 ]]; do
-  case $1 in
-      $ALL_ENVS_TEST)
-        if [ -z ${ENVIRONMENT} ]; then
-          ENVIRONMENT="$1"
-        else
-          echo "ERROR: environment has been set twice: $ENVIRONMENT $1"
-          echo
-          usage
-          exit 1
-        fi
-        shift
-      ;;
-      $ALL_PHASES_TEST) PHASES="$1 $PHASES";  shift
-      ;;
-      init|plan|apply|destroy)
-        if [ -z ${terraform_command} ]; then
-          terraform_command="$1"
-        else
-          echo "ERROR: command has been set twice: $terraform_command $1"
-          echo
-          usage
-          exit 1
-        fi
-        shift
-      ;;
-      --help) usage; exit 0
-      ;;
-      *) echo "Unknown option: $1"; usage; exit 1
-      ;;
-  esac
+if contains "$1" "$ALL_ENVS" ; then
+  ENVIRONMENT="$1"
+  shift
+fi
+
+while contains "$1" "$ALL_PHASES"; do
+  PHASES="$1 $PHASES"
+  shift
 done
+
+if contains "$1" "bootstrap plan apply destroy"; then
+  terraform_command="$1"
+  shift
+fi
+
+if [[ "$1" == "--help" ]]; then
+  usage
+  exit 0
+fi
+
+if [[ $# -gt 0 ]]; then 
+  echo "unknown parameter(s) $*"
+  echo
+  usage
+  exit 1
+fi
 
 # default command: plan
 terraform_command=${terraform_command:-plan}
@@ -134,7 +137,7 @@ for phase in ${PHASES_IN_EXEC_ORDER}; do
 
   # terraform get
 
-  # if [[ "${terraform_command}" ==  'init' ]]; then
+  # if [[ "${terraform_command}" ==  'bootstrap' ]]; then
   #   terraform init \
   #       -backend-config "project_name=${CLOUDUCT_PROJECTNAME}" \
   #       -backend-config "environment=${ENVIRONMENT}" \

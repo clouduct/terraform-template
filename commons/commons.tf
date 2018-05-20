@@ -14,10 +14,8 @@ variable "environments" {
 }
 
 variable "project_name" {
-  default = "clouduct1"
 }
 
 variable "environment" {
   default = "dev"
 }
-

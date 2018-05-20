@@ -6,6 +6,6 @@ resource "aws_s3_bucket" "remote_state_bucket" {
   }
 
   lifecycle {
-    prevent_destroy = true
+    prevent_destroy = false
   }
 }
