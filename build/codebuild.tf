@@ -46,31 +46,40 @@ EOF
 }
 
 
-# resource "aws_iam_role_policy" "cb_policy" {
-#   name        = "${var.project_name}-${var.environment}-cb-pol"
-#   role = "${aws_iam_role.cb_role.id}"
+resource "aws_iam_role_policy" "cb_policy" {
+  name = "${var.project_name}-${var.environment}-cb-pol"
+  role = "${aws_iam_role.cb_role.id}"
 
-#   policy = <<EOF
-# {
-#   "Version": "2012-10-17",
-#   "Statement": [
-#     {
-#       "Action": ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents],
-#       "Effect": "Allow",
-#       "Resource": "*"
-#     },
-#     {
-#       "Action": [
-#         "*:*"
-#       ],
-#       "Effect": "Allow",
-#       "Resource": [
-#         "arn:aws:s3:::${var.project_name}-${var.environment}-*",
-#         "arn:aws:kms:::${var.project_name}-${var.environment}-*",
-#         "arn:aws:codecommit:::${var.project_name}-${var.environment}-*"
-#       ]
-#     }
-#   ]
-# }
-# EOF
-# }
+  policy = <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Action": [
+        "logs:CreateLogGroup",
+        "logs:CreateLogStream",
+        "logs:PutLogEvents"
+      ],
+      "Effect": "Allow",
+      "Resource": "*"
+    },
+    {
+      "Action": "*",
+      "Effect": "Allow",
+      "Resource": "*",
+      "Condition": {
+        "StringLike": {
+          "aws:Arn": ["arn:aws:*:::${var.project_name}-${var.environment}-*"]
+        }
+      }
+    },
+    {
+      "Action": "codecommit:GitPull",
+      "Effect": "Allow",
+      "Resource": "${aws_codecommit_repository.application.arn}"
+    }
+
+  ]
+}
+EOF
+}
