@@ -80,11 +80,11 @@ Resources
             Effect: Allow,
             Resource: [!Join ['', ['arn:aws:s3:::', !Ref 'S3Bucket']], !Join ['', ['arn:aws:s3:::', !Ref 'S3Bucket', /*]]]
           },
-          !If [CreateWebSiteS3Bucket, {
-            Action: ['s3:PutObject*', 's3:GetObject', 's3:GetObjectVersion'],
-            Effect: Allow,
-            Resource: [!Join ['', ['arn:aws:s3:::', !Ref 'AWS::NoValue']], !Join ['', ['arn:aws:s3:::', !Ref 'AWS::NoValue',/*]]]
-          }, !Ref 'AWS::NoValue'],
+          # !If [CreateWebSiteS3Bucket, {
+          #   Action: ['s3:PutObject*', 's3:GetObject', 's3:GetObjectVersion'],
+          #   Effect: Allow,
+          #   Resource: [!Join ['', ['arn:aws:s3:::', !Ref 'AWS::NoValue']], !Join ['', ['arn:aws:s3:::', !Ref 'AWS::NoValue',/*]]]
+          # }, !Ref 'AWS::NoValue'],
           {
             Action: ['codecommit:GitPull'],
             Effect: Allow,
@@ -339,20 +339,20 @@ ActionTypeId: {Category: Source, Owner: AWS, Provider: CodeCommit,
                 RepositoryName: !Ref 'RepositoryName'}, InputArtifacts: [], Name: ApplicationSource,
               OutputArtifacts: [{Name: !Join ['-', [!Ref 'ProjectId', SourceArtifact]]}],
               RunOrder: 1}], Name: Source}, !If [CreateCodeBuild
-Resources, {
-Actions: [
+               Resources, {
+                  Actions: [
               {
-ActionTypeId: {Category: Build, Owner: AWS, Provider: CodeBuild, Version: 1},
+               ActionTypeId: {Category: Build, Owner: AWS, Provider: CodeBuild, Version: 1},
                 Configuration: {ProjectName: !Ref 'ProjectId'}, InputArtifacts: [
                   {Name: !Join ['-', [!Ref 'ProjectId', SourceArtifact]]}], Name: CodeBuild,
                 OutputArtifacts: [{Name: !Join ['-', [!Ref 'ProjectId', BuildArtifact]]}],
                 RunOrder: 1}], Name: Build}, !Ref 'AWS::NoValue'], {
-Actions: [{
-ActionTypeId: {
+               Actions: [{
+                ActionTypeId: {
                 Category: Deploy, Owner: AWS, Provider: ElasticBeanstalk, Version: 1},
               Configuration: {ApplicationName: !Ref 'EBApplication', EnvironmentName: !Ref 'EBEnvironment'},
               InputArtifacts: [!If [CreateCodeBuild
-Resources, {Name: !Join ['-', [
+                       Resources, {Name: !Join ['-', [
                         !Ref 'ProjectId', BuildArtifact]]}, {Name: !Join ['-', [!Ref 'ProjectId',
                         SourceArtifact]]}]], Name: EBStack, OutputArtifacts: [], RunOrder: 1}],
           Name: Application}]

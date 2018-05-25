@@ -136,6 +136,8 @@ for phase in ${PHASES_IN_EXEC_ORDER}; do
   pushd "${INFRA_DIR}/$phase" > /dev/null
 
   # terraform get
+  TODO: init immer aufrufen
+  TODO -reconfigure
 
   # if [[ "${terraform_command}" ==  'bootstrap' ]]; then
   #   terraform init \

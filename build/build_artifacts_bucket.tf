@@ -1,7 +1,6 @@
-resource "aws_s3_bucket" "build_artifacts" {
-  bucket = "${var.project_name}-artifacts"
+resource "aws_s3_bucket" "pipeline" {
+  bucket = "${var.project_name}-pipe"
   tags {
-    environment = "${var.environment}"
     project = "${var.project_name}"
   }
 }
