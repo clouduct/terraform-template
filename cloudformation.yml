@@ -142,17 +142,18 @@ Resources
     Properties:
       AssumeRolePolicyDocument:
         Statement: [{
-Action: 'sts:AssumeRole',
-Effect: Allow, Principal: {Service: [
-                codepipeline.amazonaws.com]}, Sid: 1}]
-      Path: /
-      Policies: [{PolicyDocument: {Statement: [{
-
-Action: ['s3:*'],
-
-Effect: Allow,
-
-Resource: [
+          Action: 'sts:AssumeRole',
+          Effect: Allow, 
+          Principal: {Service: [codepipeline.amazonaws.com]}, Sid: 1}
+        ]
+        Path: /
+        Policies: [
+          {
+            PolicyDocument: {
+              Statement: [{
+                Action: ['s3:*'],
+                Effect: Allow,
+                Resource: [
                   !Join ['', ['arn:aws:s3:::', !Ref 'S3Bucket']], !Join ['', ['arn:aws:s3:::',
                       !Ref 'S3Bucket', /*]], 'arn:aws:s3:::elasticbeanstalk*']}, {
 
@@ -332,11 +333,19 @@ Resource: [!Join ['', ['arn:aws:s3:::', !Join ['-', [aws, codestar,
         Type: S3
       Name: !Join ['-', [!Ref 'ProjectId', Pipeline]]
       RoleArn: !GetAtt [CodePipelineTrustRole, Arn]
-      Stages: [{
-Actions: [{
-ActionTypeId: {Category: Source, Owner: AWS, Provider: CodeCommit,
-                Version: 1}, Configuration: {BranchName: master, PollForSourceChanges: false,
-                RepositoryName: !Ref 'RepositoryName'}, InputArtifacts: [], Name: ApplicationSource,
+      Stages: [
+        {Actions: [
+          {ActionTypeId: 
+          {Category: Source, Owner: AWS, Provider: CodeCommit,
+                Version: 1}, 
+
+                Configuration: {
+                  BranchName: master, 
+                  PollForSourceChanges: false,
+                  RepositoryName: !Ref 'RepositoryName'
+                }, 
+
+                InputArtifacts: [], Name: ApplicationSource,
               OutputArtifacts: [{Name: !Join ['-', [!Ref 'ProjectId', SourceArtifact]]}],
               RunOrder: 1}], Name: Source}, !If [CreateCodeBuild
                Resources, {
@@ -346,8 +355,8 @@ ActionTypeId: {Category: Source, Owner: AWS, Provider: CodeCommit,
                 Configuration: {ProjectName: !Ref 'ProjectId'}, InputArtifacts: [
                   {Name: !Join ['-', [!Ref 'ProjectId', SourceArtifact]]}], Name: CodeBuild,
                 OutputArtifacts: [{Name: !Join ['-', [!Ref 'ProjectId', BuildArtifact]]}],
-                RunOrder: 1}], Name: Build}, !Ref 'AWS::NoValue'], {
-               Actions: [{
+                RunOrder: 1}], Name: Build}, !Ref 'AWS::NoValue'], 
+        {Actions: [{
                 ActionTypeId: {
                 Category: Deploy, Owner: AWS, Provider: ElasticBeanstalk, Version: 1},
               Configuration: {ApplicationName: !Ref 'EBApplication', EnvironmentName: !Ref 'EBEnvironment'},
