@@ -1,7 +1,13 @@
 provider "aws" {
   region = "${var.region}"
+  version = "~> 1.22"
   shared_credentials_file = "~/.aws/credentials"
   profile = "clouduct"
+}
+
+terraform {
+  backend "s3" {
+  }
 }
 
 variable "region" {
@@ -19,3 +25,4 @@ variable "project_name" {
 variable "environment" {
   default = "dev"
 }
+

@@ -220,7 +220,6 @@ resource "aws_codepipeline" "codepipeline" {
       output_artifacts = ["${var.project_name}-source"]
 
       configuration {
-        // Owner      = "my-organization"
         RepositoryName = "${aws_codecommit_repository.application.repository_name}"
         BranchName     = "master"
       }
