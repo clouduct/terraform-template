@@ -122,13 +122,15 @@ PHASES_IN_EXEC_ORDER=$(trim $PHASES_IN_EXEC_ORDER)
 
 INFRA_DIR="$( cd "$( dirname "$0" )" && pwd )"
 
+TF_PLUGIN_CACHE_DIR=${INFRA_DIR}/.terraform.d/plugin_cache
+
 # --------------------------------------------------------------------------------------------------
 # EXECUTE
 # --------------------------------------------------------------------------------------------------
 
 if [[ $command == "bootstrap" ]]; then
 
-  echo "HERE"
+  mkdir -p "${TF_PLUGIN_CACHE_DIR}"
 
   pushd "${INFRA_DIR}/bootstrap" > /dev/null
 
