@@ -220,7 +220,7 @@ resource "aws_codepipeline" "codepipeline" {
       output_artifacts = ["${var.project_name}-source"]
 
       configuration {
-        RepositoryName = "${aws_codecommit_repository.application.repository_name}"
+        RepositoryName = "${data.terraform_remote_state.commons.application_repository_name}"
         BranchName     = "master"
       }
     }

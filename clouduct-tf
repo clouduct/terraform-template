@@ -3,7 +3,7 @@
 set -e
 
 
-ALL_PHASES="network storage compute build"
+ALL_PHASES="commons network storage compute build"
 ALL_ENVS="dev test int prod"
 
 DEFAULT_ENVIRONMENT=dev
@@ -87,7 +87,7 @@ while contains "$1" "$ALL_PHASES"; do
 done
 
 if contains "$1" "bootstrap plan apply destroy"; then
-  terraform_command="$1"
+  command="$1"
   shift
 fi
 
@@ -104,7 +104,7 @@ if [[ $# -gt 0 ]]; then
 fi
 
 # default command: plan
-terraform_command=${terraform_command:-plan}
+command=${command:-plan}
 
 if [[ "${PHASES}" = "" ]]; then
   PHASES_IN_EXEC_ORDER=$ALL_PHASES
@@ -120,37 +120,53 @@ fi
 
 PHASES_IN_EXEC_ORDER=$(trim $PHASES_IN_EXEC_ORDER)
 
-echo "$TF_VAR_project_name env: ($TF_VAR_environment) phases: ($PHASES_IN_EXEC_ORDER) command: ($terraform_command)"
-
-# # ensure if the NAME-infra directory exists:
-# INFRA_DIR="${CLOUDUCT_PROJECTNAME}-infra"
-# if [ ! -d "${INFRA_DIR}" ]; then
-#   echo "could not find directory ${INFRA_DIR}"
-#   exit 2
-# fi
-
 INFRA_DIR="$( cd "$( dirname "$0" )" && pwd )"
 
 # --------------------------------------------------------------------------------------------------
 # EXECUTE
 # --------------------------------------------------------------------------------------------------
 
-for phase in ${PHASES_IN_EXEC_ORDER}; do
-  # echo "${INFRA_DIR}/$phase"
-  pushd "${INFRA_DIR}/$phase" > /dev/null
+if [[ $command == "bootstrap" ]]; then
 
-  BUCKET="${TF_VAR_project_name}-infra-${TF_VAR_environment}-remote-state-bucket"
+  echo "HERE"
 
-  terraform init -reconfigure \
-    -backend-config="region=${TF_VAR_region}" \
-    -backend-config="bucket=${BUCKET}" \
-    -backend-config="key=${phase}"
+  pushd "${INFRA_DIR}/bootstrap" > /dev/null
 
-  terraform "${terraform_command}"
+  terraform init -reconfigure
+  terraform apply
 
   popd > /dev/null
 
-done
+else
+
+  echo "$TF_VAR_project_name env: ($TF_VAR_environment) phases: ($PHASES_IN_EXEC_ORDER) command: ($command)"
+
+  for phase in ${PHASES_IN_EXEC_ORDER}; do
+    # echo "${INFRA_DIR}/$phase"
+    pushd "${INFRA_DIR}/$phase" > /dev/null
+
+    export TF_VAR_bucket="${TF_VAR_project_name}-clouduct-terraform"
+    echo "state bucket: $TF_VAR_bucket"
+
+    if [[ $phase = "commons" ]]; then
+      KEY="commons"
+    else
+      KEY=${TF_VAR_environment}/${phase}
+    fi
+    echo "key: ${KEY}"
+
+    terraform init -reconfigure \
+      -backend-config="region=${TF_VAR_region}" \
+      -backend-config="bucket=${TF_VAR_bucket}" \
+      -backend-config="key=${KEY}"
+
+    terraform "${command}"
+
+    popd > /dev/null
+
+  done
+
+fi
 
 exit 0
 

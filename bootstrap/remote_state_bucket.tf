@@ -1,5 +1,5 @@
 resource "aws_s3_bucket" "remote_state_bucket" {
-  bucket = "${var.project_name}-infra-${var.environment}-remote-state-bucket"
+  bucket = "${var.project_name}-clouduct-terraform"
 
   versioning {
     enabled = true

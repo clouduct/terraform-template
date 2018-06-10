@@ -5,11 +5,6 @@ provider "aws" {
   profile = "clouduct"
 }
 
-terraform {
-  backend "s3" {
-  }
-}
-
 variable "region" {
   default = "eu-central-1"
 }
@@ -24,5 +19,8 @@ variable "project_name" {
 
 variable "environment" {
   default = "dev"
+}
+
+variable "bucket" {
 }
 
