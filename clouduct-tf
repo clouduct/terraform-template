@@ -1,0 +1,171 @@
+#!/usr/bin/env bash
+
+set -e
+
+
+ALL_PHASES="commons network storage compute build"
+ALL_ENVS="dev test int prod"
+
+DEFAULT_ENVIRONMENT=dev
+DEFAULT_COMMAND=plan
+
+# --------------------------------------------------------------------------------------------------
+# PREPARE
+# --------------------------------------------------------------------------------------------------
+
+TWRAP_CONFIG_FILE=".clouduct-tf"
+
+# ensure we're executing in the correct directory
+SCRIPT_DIR=$(cd "$(dirname "$0")"; pwd)
+cd "${SCRIPT_DIR}"
+
+BASENAME=$(basename "$0")
+
+# check for existence of config file
+if [ -e "$TWRAP_CONFIG_FILE" ]; then
+  source "${TWRAP_CONFIG_FILE}"
+else
+  echo "Could not find configuration file ${TWRAP_CONFIG_FILE}"
+  exit 1
+fi
+
+if [[ -z $TF_VAR_project_name ]]; then
+  echo "missing environment variable TF_VAR_project_name"
+  echo "should have been set in $TWRAP_CONFIG_FILE"
+  exit 1
+fi
+export TF_VAR_project_name
+
+if [[ -z $TF_VAR_region ]]; then
+  echo "missing environment variable TF_VAR_region"
+  echo "should have been set in $TWRAP_CONFIG_FILE"
+  exit 1
+fi
+
+usage() {
+  local ALL_PHASES_ALT="${ALL_PHASES// /|}"
+  local ALL_ENVS_ALT="${ALL_ENVS// /|}"
+  echo "Usage:"
+  echo "  ${BASENAME} [env] [phase] [command]"
+  echo "  "
+  echo "     env           ${ALL_ENVS_ALT} -- default: dev"
+  echo "     phase         ${ALL_PHASES_ALT} -- if omitted all phases will be executed"
+  echo "     command       plan|apply|destroy ('bootstrap' can only be called once) -- default: plan"
+  echo "  "
+}
+
+trim() {
+  echo "$*" | sed -e 's/ $//' -e 's/^ //'
+}
+
+contains() {
+  local item="$1"
+  local list="$2"
+
+  if [[ " $list " =~ " $item " ]]; then
+    return 0
+  else
+    return 1
+  fi
+}
+
+
+# --------------------------------------------------------------------------------------------------
+# ARGUMENT HANDLING
+# --------------------------------------------------------------------------------------------------
+
+if contains "$1" "$ALL_ENVS" ; then
+  TF_VAR_environment="$1"
+  shift
+fi
+TF_VAR_environment=${TF_VAR_environment:-$DEFAULT_ENVIRONMENT}
+
+while contains "$1" "$ALL_PHASES"; do
+  PHASES="$1 $PHASES"
+  shift
+done
+if [[ "${PHASES}" = "" ]]; then
+  PHASES_IN_EXEC_ORDER=$ALL_PHASES
+else
+  # ensure the phasess are in the correct order
+  PHASES=$(echo "$PHASES" | sed -e 's/ $//' -e 's/ /\|/')
+  for phase in $ALL_PHASES; do
+    if [[ $phase =~ .*${PHASES}.* ]]; then
+      PHASES_IN_EXEC_ORDER="$PHASES_IN_EXEC_ORDER $phase"
+    fi
+  done
+fi
+PHASES_IN_EXEC_ORDER=$(trim $PHASES_IN_EXEC_ORDER)
+
+if contains "$1" "bootstrap plan apply destroy"; then
+  command="$1"
+  shift
+fi
+command=${command:-${DEFAULT_COMMAND}}
+
+if [[ "$1" == "--help" ]]; then
+  usage
+  exit 0
+fi
+
+if [[ $# -gt 0 ]]; then
+  echo "unknown parameter(s) $*"
+  echo
+  usage
+  exit 1
+fi
+
+
+# --------------------------------------------------------------------------------------------------
+# EXECUTE
+# --------------------------------------------------------------------------------------------------
+
+export TF_VAR_bucket="${TF_VAR_project_name}-clouduct-terraform"
+
+INFRA_DIR="$( cd "$( dirname "$0" )" && pwd )"
+
+TF_PLUGIN_CACHE_DIR=${INFRA_DIR}/.terraform.d/plugin_cache
+
+if [[ $command == "bootstrap" ]]; then
+
+  mkdir -p "${TF_PLUGIN_CACHE_DIR}"
+
+  pushd "${INFRA_DIR}/bootstrap" > /dev/null
+
+  terraform init -reconfigure
+  terraform apply
+
+  popd > /dev/null
+
+else
+
+  echo "$TF_VAR_project_name env: ($TF_VAR_environment) phases: ($PHASES_IN_EXEC_ORDER) command: ($command)"
+
+  for phase in ${PHASES_IN_EXEC_ORDER}; do
+    # echo "${INFRA_DIR}/$phase"
+    pushd "${INFRA_DIR}/$phase" > /dev/null
+
+    echo "terraform state bucket: $TF_VAR_bucket"
+
+    if [[ $phase = "commons" ]]; then
+      KEY="commons"
+    else
+      KEY=${TF_VAR_environment}/${phase}
+    fi
+    echo "key: ${KEY}"
+
+    terraform init -reconfigure \
+      -backend-config="region=${TF_VAR_region}" \
+      -backend-config="bucket=${TF_VAR_bucket}" \
+      -backend-config="key=${KEY}"
+
+    terraform "${command}"
+
+    popd > /dev/null
+
+  done
+
+fi
+
+exit 0
+

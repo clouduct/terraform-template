@@ -1,0 +1,468 @@
+AWSTemplateFormatVersion: 2010-09-09
+Conditions:
+  CreateCodeBuild
+Resources: !Equals [true, true]
+  CreateWebSiteS3Bucket: !Equals [true, false]
+  UseCustomAmi: !And [!Not [!Equals [!Ref 'CustomAmiId', default]], !Equals [!Ref 'InstanceType',
+      t1.micro]]
+  UseSubnet: !Not [!Equals [!Ref 'SubnetId', subnet-none]]
+Description: A Java Spring web service deployed to AWS Elastic Beanstalk.
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups: [{Label: {default: Application}, Parameters: [ProjectId]}]
+  CodeBuildImage: aws/codebuild/eb-java-8-amazonlinux-64:2.4.3
+  CodeBuildImageOverride: aws/codebuild/eb-java-8-amazonlinux-64:2.4.3
+  CreateCodeBuild: true
+  Platform: Tomcat 8 Java 8
+  ProjectTemplateId: webservice-javaspring-eb
+  SrcS3: webservice-javaspring/src/ebsrc.zip
+  WebsiteS3Bucket: AWS::NoValue
+Outputs:
+  URL:
+    Description: The URL for the Java Spring web service managed by AWS Elastic Beanstalk and deployed on an Amazon EC2 instance.
+    Value: !Join ['', ['http://', !GetAtt [EBEnvironment, EndpointURL], /]]
+Parameters:
+  AppName:
+    Description: Name of the application.
+    MaxLength: 100
+    MinLength: 1
+    Type: String
+  CustomAmiId:
+    Default: default
+    Description: Optional custom AMI that will be used by AWS Elastic Beanstalk for EC2 instances.
+    Type: String
+  InstanceType:
+    Default: t2.micro
+    Description: The Amazon EC2 instance type to use.
+    Type: String
+  KeyPairName:
+    Description: The name of the key pair used to make SSH connections to Amazon EC2 instances.
+    Type: AWS::EC2::KeyPair::KeyName
+  ProjectId:
+    AllowedPattern: ^[a-z]([a-z0-9-])+$
+    ConstraintDescription: Project IDs must be between 2 and 15 characters, begin with a letter, and only contain lowercase letters, numbers, and hyphens (-).
+    Description: Project ID.
+    MaxLength: 15
+    MinLength: 2
+    Type: String
+  RepositoryName:
+    Description: AWS CodeCommit repository name.
+    MaxLength: 100
+    MinLength: 1
+    Type: String
+  SolutionStackName:
+    Default: default
+    Description: The name of the solution stack used to launch environments in AWS Elastic Beanstalk.
+    Type: String
+  SubnetId:
+    Default: subnet-none
+    Description: The name of the VPC subnet to use for Amazon EC2 instances launched for this project.
+    Type: String
+  VpcId:
+    Description: The ID of the Amazon Virtual Private Cloud (VPC) to use for Amazon EC2 instances.
+    Type: AWS::EC2::VPC::Id
+
+Resources:
+  CodeBuildPolicy:
+    Condition: CreateCodeBuild
+Resources
+    Description: Setting IAM policy for service role for Amazon EC2 instances
+    Properties:
+      PolicyDocument:
+        Statement: [
+          {
+            Action: ['logs:CreateLogGroup', 'logs:CreateLogStream', 'logs:PutLogEvents'],
+            Effect: Allow,
+            Resource: '*'
+          },
+          {
+            Action: ['s3:PutObject', 's3:GetObject', 's3:GetObjectVersion'],
+            Effect: Allow,
+            Resource: [!Join ['', ['arn:aws:s3:::', !Ref 'S3Bucket']], !Join ['', ['arn:aws:s3:::', !Ref 'S3Bucket', /*]]]
+          },
+          # !If [CreateWebSiteS3Bucket, {
+          #   Action: ['s3:PutObject*', 's3:GetObject', 's3:GetObjectVersion'],
+          #   Effect: Allow,
+          #   Resource: [!Join ['', ['arn:aws:s3:::', !Ref 'AWS::NoValue']], !Join ['', ['arn:aws:s3:::', !Ref 'AWS::NoValue',/*]]]
+          # }, !Ref 'AWS::NoValue'],
+          {
+            Action: ['codecommit:GitPull'],
+            Effect: Allow,
+            Resource: [!Join [':', [arn, aws, codecommit, !Ref 'AWS::Region', !Ref 'AWS::AccountId', !Ref 'RepositoryName']]]
+          }, {
+            Action: ['kms:GenerateDataKey*', 'kms:Encrypt', 'kms:Decrypt'],
+            Effect: Allow,
+            Resource: [!Join [':', ['arn:aws:kms', !Ref 'AWS::Region', !Ref 'AWS::AccountId', !Join [/, [alias, aws/s3]]]]]
+          }
+        ]
+      PolicyName: CodeStarWorkerCodeBuildPolicy
+      Roles: [!Ref 'CodeBuildRole']
+    Type: AWS::IAM::Policy
+  CodeBuildProject:
+    Condition: CreateCodeBuild Resources
+    DependsOn: [CodeBuildPolicy]
+    Properties:
+      Artifacts:
+        Packaging: zip
+        Type: codepipeline
+      Description: !Join ['', ['AWS CodeStar created CodeBuild Project for ', !Ref 'AppName']]
+      Environment:
+        ComputeType: small
+        EnvironmentVariables: [{Name: S3_BUCKET, Value: !Ref 'S3Bucket'}, {Name: WEBSITE_S3_PREFIX,
+            Value: !If [CreateWebSiteS3Bucket, !Join ['', ['https://s3-eu-central-1.amazonaws.com/',
+                  !Ref 'AWS::NoValue']], NoVal]}, {Name: WEBSITE_S3_BUCKET, Value: !If [
+              CreateWebSiteS3Bucket, !Ref 'AWS::NoValue', NoVal]}]
+        Image: aws/codebuild/eb-java-8-amazonlinux-64:2.4.3
+        Type: container
+      Name: !Ref 'ProjectId'
+      ServiceRole: !Ref 'CodeBuildRole'
+      Source:
+        Type: codepipeline
+    Type: AWS::CodeBuild::Project
+  CodeBuildRole:
+    Condition: CreateCodeBuild Resources
+    Description: Creating service role in IAM for Amazon EC2 instances
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement: [{
+          Action: 'sts:AssumeRole',
+          Effect: Allow,
+          Principal: {Service: codebuild.amazonaws.com}}]
+      Path: /
+      RoleName: !Join ['-', [CodeStarWorker, !Ref 'ProjectId', CodeBuild]]
+    Type: AWS::IAM::Role
+  CodeCommitRepo:
+    Description: Creating AWS CodeCommit repository for application source code
+    Properties:
+      RepositoryDescription: !Join ['', [!Ref 'ProjectId', ' project repository']]
+      RepositoryName: !Ref 'RepositoryName'
+    Type: AWS::CodeCommit::Repository
+  CodePipelineTrustRole:
+    Description: Creating service role in IAM for AWS CodePipeline
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement: [{
+          Action: 'sts:AssumeRole',
+          Effect: Allow,
+          Principal: {Service: [codepipeline.amazonaws.com]}, Sid: 1}
+        ]
+        Path: /
+        Policies: [
+          {
+            PolicyDocument: {
+              Statement: [
+                {
+                  Action: ['s3:*'],
+                  Effect: Allow,
+                  Resource: [
+                    !Join ['', ['arn:aws:s3:::', !Ref 'S3Bucket']], !Join ['', ['arn:aws:s3:::', !Ref 'S3Bucket', /*]], 'arn:aws:s3:::elasticbeanstalk*'
+                  ]
+                },
+                {
+                  Action: ['s3:CreateBucket'],
+                  Effect: Allow,
+                  Resource: '*'
+                },
+                {
+                  Action: [
+                    'codecommit:CancelUploadArchive',
+                    'codecommit:GetBranch',
+                    'codecommit:GetCommit',
+                    'codecommit:GetUploadArchiveStatus',
+                    'codecommit:UploadArchive'
+                  ],
+                  Effect: Allow,
+                  Resource: [!Join [':', [arn, aws, codecommit, !Ref 'AWS::Region', !Ref 'AWS::AccountId', !Ref 'RepositoryName']]]
+                },
+                !If [CreateCodeBuild Resources,
+                  {
+                    Action: [
+                      'codebuild:StartBuild',
+                      'codebuild:BatchGetBuilds',
+                      'codebuild:StopBuild'
+                    ],
+                    Effect: Allow,
+                    Resource: [!GetAtt 'CodeBuildProject.Arn']
+                  }, !Ref 'AWS::NoValue'
+                ],
+                {
+                  Action: ['elasticbeanstalk:*'],
+                  Effect: Allow,
+                  Resource: [!Join [':', [arn, aws, elasticbeanstalk, !Ref 'AWS::Region', !Ref 'AWS::AccountId',
+                                  !Join [/, [application, !Ref 'EBApplication']]]], !Join [':',
+                                [arn, aws, elasticbeanstalk, !Ref 'AWS::Region', !Ref 'AWS::AccountId',
+                                  !Join [/, [applicationversion, !Ref 'EBApplication', '*']]]],
+                              !Join [':', [arn, aws, elasticbeanstalk, !Ref 'AWS::Region', !Ref 'AWS::AccountId',
+                                  !Join [/, [environment, !Ref 'EBApplication', !Ref 'EBEnvironment']]]]]
+                },
+                {
+                  Action: ['autoscaling:DescribeAutoScalingGroups', 'autoscaling:DescribeLaunchConfigurations',
+                              'autoscaling:DescribeScalingActivities', 'autoscaling:ResumeProcesses',
+                              'autoscaling:SuspendProcesses', 'ec2:Describe*'],
+                  Effect: Allow,
+                  Resource: '*'
+                },
+                {
+                  Action: ['cloudformation:GetTemplate', 'cloudformation:ListStackResources',
+                              'cloudformation:UpdateStack', 'cloudformation:DescribeStack*'],
+                  Effect: Allow,
+                  Resource: [!Join [':', [arn, aws, cloudformation, !Ref 'AWS::Region',
+                                  !Ref 'AWS::AccountId', stack/awseb-e-*]]]
+                }
+              ]
+            },
+      PolicyName: CodeStarWorkerCodePipelinePolicy}]
+      RoleName: !Join ['-', [CodeStarWorker, !Ref 'ProjectId', CodePipeline]]
+    Type: AWS::IAM::Role
+  CodeStarProject:
+    Description: Starting project creation
+    Properties:
+      ProjectDescription: AWS CodeStar created project
+      ProjectId: !Ref 'ProjectId'
+      ProjectName: !Ref 'AppName'
+      ProjectTemplateId: arn:aws:codestar:eu-central-1::project-template/codecommit/webservice-javaspring-eb
+      StackId: !Ref 'AWS::StackId'
+    Type: AWS::CodeStar::Project
+    Version: 1.0
+  EBApplication:
+    Description: Configuring AWS Elastic Beanstalk for project application
+    Properties:
+      ApplicationName: !Join ['', [!Ref 'ProjectId', app]]
+      Description: AWS Elastic Beanstalk Application
+    Type: AWS::ElasticBeanstalk::Application
+  EBApplicationVersion:
+    Description: Versioning AWS Elastic Beanstalk application
+    Properties:
+      ApplicationName: !Ref 'EBApplication'
+      Description: AWS ElasticBeanstalk Application Version
+      SourceBundle:
+        S3Bucket: awscodestar-templates-fra-prod
+        S3Key: webservice-javaspring/src/ebsrc.zip
+    Type: AWS::ElasticBeanstalk::ApplicationVersion
+  EBConfigurationTemplate:
+    Description: Creating AWS Elastic Beanstalk configuration template
+    Properties:
+      ApplicationName: !Ref 'EBApplication'
+      Description: AWS ElasticBeanstalk Sample Configuration Template
+      OptionSettings: [{Namespace: 'aws:elasticbeanstalk:environment', OptionName: EnvironmentType,
+          Value: SingleInstance}, {Namespace: 'aws:elasticbeanstalk:application:environment',
+          OptionName: SECRET_KEY_BASE, Value: 12345ChangeMeBeforeRealUse67890}, {
+          Namespace: 'aws:elasticbeanstalk:environment', OptionName: ServiceRole,
+          Value: !Ref 'EBTrustRole'}, {Namespace: 'aws:elasticbeanstalk:healthreporting:system',
+          OptionName: SystemType, Value: enhanced}]
+      SolutionStackName: !Ref 'SolutionStackName'
+    Type: AWS::ElasticBeanstalk::ConfigurationTemplate
+  EBEnvironment:
+    Description: Creating AWS Elastic Beanstalk environments for application
+    Properties:
+      ApplicationName: !Ref 'EBApplication'
+      Description: AWS ElasticBeanstalk Application
+      EnvironmentName: !Ref 'EBApplication'
+      OptionSettings: [{Namespace: 'aws:autoscaling:launchconfiguration', OptionName: IamInstanceProfile,
+          Value: !Ref 'EBInstanceProfile'}, {Namespace: 'aws:autoscaling:launchconfiguration',
+          OptionName: InstanceType, Value: !Ref 'InstanceType'}, !If [UseCustomAmi,
+          {Namespace: 'aws:autoscaling:launchconfiguration', OptionName: ImageId,
+            Value: !Ref 'CustomAmiId'}, !Ref 'AWS::NoValue'], {Namespace: 'aws:autoscaling:launchconfiguration',
+          OptionName: EC2KeyName, Value: !Ref 'KeyPairName'}, {Namespace: 'aws:ec2:vpc',
+          OptionName: VPCId, Value: !Ref 'VpcId'}, !If [UseSubnet, {Namespace: 'aws:ec2:vpc',
+            OptionName: Subnets, Value: !Ref 'SubnetId'}, !Ref 'AWS::NoValue'], !If [
+          UseCustomAmi, {Namespace: 'aws:autoscaling:launchconfiguration', OptionName: ImageId,
+            Value: !Ref 'CustomAmiId'}, !Ref 'AWS::NoValue']]
+      TemplateName: !Ref 'EBConfigurationTemplate'
+      VersionLabel: !Ref 'EBApplicationVersion'
+    Type: AWS::ElasticBeanstalk::Environment
+  EBInstanceProfile:
+    Description: Creating Amazon EC2 instance profile for AWS Elastic Beanstalk
+    Properties:
+      Path: /
+      Roles: [!Ref 'EBWorkerRole']
+    Type: AWS::IAM::InstanceProfile
+  EBTrustRole:
+    Description: Creating service role in IAM for AWS Elastic Beanstalk
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement: [{
+
+Action: ['sts:AssumeRole'],
+
+Effect: Allow, Principal: {Service: [
+                elasticbeanstalk.amazonaws.com]}}]
+        Version: 2012-10-17
+      ManagedPolicyArns: ['arn:aws:iam::aws:policy/service-role/AWSElasticBeanstalkEnhancedHealth',
+        'arn:aws:iam::aws:policy/service-role/AWSElasticBeanstalkService']
+      Path: /
+      RoleName: !Join ['-', [CodeStarWorker, !Ref 'ProjectId', EBService]]
+    Type: AWS::IAM::Role
+  EBWorkerRole:
+    Description: Creating instance profile role in IAM for AWS Elastic Beanstalk
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement: [
+          {
+            Action: ['sts:AssumeRole'],
+            Effect: Allow,
+            Principal: { Service: [ec2.amazonaws.com] }
+          }
+        ]
+        Version: 2012-10-17
+        Path: /
+        Policies: [
+          {
+            PolicyDocument: {
+              Statement: [
+                {
+                  Action: ['s3:GetObject'],
+                  Effect: Allow,
+                  Resource: [!Join ['', ['arn:aws:s3:::', !Join ['-', [aws, codestar,
+                          !Ref 'AWS::Region', !Ref 'AWS::AccountId']], !Join [/, [
+                          '', !Ref 'ProjectId', ssh/*]]]], 'arn:aws:s3:::awscodestar-remote-access-signatures-eu-central-1/*',
+                  'arn:aws:s3:::awscodestar-remote-access-eu-central-1/*']
+                }
+              ],
+              Version: 2012-10-17
+            },
+            PolicyName: EBInstancePolicy
+          }
+        ]
+        RoleName: !Join ['-', [CodeStarWorker, !Ref 'ProjectId', EB]]
+        Type: AWS::IAM::Role
+  ProjectPipeline:
+    DependsOn: [EBEnvironment, SeedRepo, CodePipelineTrustRole]
+    Description: Creating a deployment pipeline for your project in AWS CodePipeline
+    Properties:
+      ArtifactStore:
+        Location: !Join ['-', [aws, codestar, !Ref 'AWS::Region', !Ref 'AWS::AccountId',
+            !Ref 'ProjectId', pipe]]
+        Type: S3
+      Name: !Join ['-', [!Ref 'ProjectId', Pipeline]]
+      RoleArn: !GetAtt [CodePipelineTrustRole, Arn]
+      Stages: [
+        {Actions: [
+          {ActionTypeId:
+          {Category: Source, Owner: AWS, Provider: CodeCommit,
+                Version: 1},
+
+                Configuration: {
+                  BranchName: master,
+                  PollForSourceChanges: false,
+                  RepositoryName: !Ref 'RepositoryName'
+                },
+
+                InputArtifacts: [], Name: ApplicationSource,
+              OutputArtifacts: [{Name: !Join ['-', [!Ref 'ProjectId', SourceArtifact]]}],
+              RunOrder: 1}], Name: Source}, !If [CreateCodeBuild
+               Resources, {
+                  Actions: [
+              {
+               ActionTypeId: {Category: Build, Owner: AWS, Provider: CodeBuild, Version: 1},
+                Configuration: {ProjectName: !Ref 'ProjectId'}, InputArtifacts: [
+                  {Name: !Join ['-', [!Ref 'ProjectId', SourceArtifact]]}], Name: CodeBuild,
+                OutputArtifacts: [{Name: !Join ['-', [!Ref 'ProjectId', BuildArtifact]]}],
+                RunOrder: 1}], Name: Build}, !Ref 'AWS::NoValue'],
+        {Actions: [{
+                ActionTypeId: {
+                Category: Deploy, Owner: AWS, Provider: ElasticBeanstalk, Version: 1},
+              Configuration: {ApplicationName: !Ref 'EBApplication', EnvironmentName: !Ref 'EBEnvironment'},
+              InputArtifacts: [!If [CreateCodeBuild
+                       Resources, {Name: !Join ['-', [
+                        !Ref 'ProjectId', BuildArtifact]]}, {Name: !Join ['-', [!Ref 'ProjectId',
+                        SourceArtifact]]}]], Name: EBStack, OutputArtifacts: [], RunOrder: 1}],
+          Name: Application}]
+    Type: AWS::CodePipeline::Pipeline
+  S3ArtifactBucketPolicy:
+    Description: Setting Amazon S3 bucket policy for AWS CodePipeline access
+    Properties:
+      Bucket: !Ref 'S3Bucket'
+      PolicyDocument:
+        Id: SSEAndSSLPolicy
+        Statement: [{
+Action: 's3:PutObject', Condition: {StringNotEquals: {'s3:x-amz-server-side-encryption': 'aws:kms'}},
+
+Effect: Deny, Principal: '*',
+Resource: !Join ['', ['arn:aws:s3:::', !Ref 'S3Bucket',
+                /*]], Sid: DenyUnEncryptedObjectUploads}, {
+Action: ['s3:GetObject',
+              's3:GetObjectVersion', 's3:GetBucketVersioning', 's3:PutObject'], Condition: {
+              Bool: {'aws:SecureTransport': true}},
+Effect: Allow, Principal: {AWS: [
+                !GetAtt [CodePipelineTrustRole, Arn], !If [CreateCodeBuild
+Resources,
+                  !GetAtt [CodeBuildRole, Arn], !Ref 'AWS::NoValue']]},
+Resource: [
+              !Join ['', ['arn:aws:s3:::', !Ref 'S3Bucket', /*]], !Join ['', ['arn:aws:s3:::',
+                  !Ref 'S3Bucket']]], Sid: OnlyCodeApplications}]
+        Version: 2012-10-17
+    Type: AWS::S3::BucketPolicy
+  S3Bucket:
+    DeletionPolicy: Retain
+    Description: Creating Amazon S3 bucket for AWS CodePipeline artifacts
+    Properties:
+      BucketName: !Join ['-', [aws, codestar, !Ref 'AWS::Region', !Ref 'AWS::AccountId',
+          !Ref 'ProjectId', pipe]]
+      Tags: [{Key: Name, Value: !Join ['-', [!Ref 'ProjectId', S3Bucket]]}]
+      VersioningConfiguration:
+        Status: Enabled
+    Type: AWS::S3::Bucket
+  SeedRepo:
+    DeletionPolicy: Retain
+    DependsOn: [CodeCommitRepo]
+    Description: Adding application source code to the AWS CodeCommit repository for the project
+    Properties:
+      DefaultBranchName: master
+      ProjectTemplateId: arn:aws:codestar:eu-central-1::project-template/codecommit/webservice-javaspring-eb
+      RepositoryProvider: CodeCommit
+      RepositoryURL: !GetAtt [CodeCommitRepo, CloneUrlHttp]
+    Type: AWS::CodeStar::SeedRepository
+  SourceEvent:
+    Properties:
+      Description: Rule for Amazon CloudWatch Events to detect changes to the source repository and trigger pipeline execution
+      EventPattern:
+        detail:
+          event: [referenceCreated, referenceUpdated]
+          referenceName: [master]
+          referenceType: [branch]
+        detail-type: [CodeCommit Repository State Change]
+        resources: [!GetAtt 'CodeCommitRepo.Arn']
+        source: [aws.codecommit]
+      Name: !Join ['-', [awscodestar, !Ref 'ProjectId', SourceEvent]]
+      State: ENABLED
+      Targets: [{Arn: !Join [':', [arn, aws, codepipeline, !Ref 'AWS::Region', !Ref 'AWS::AccountId',
+              !Join ['-', [!Ref 'ProjectId', Pipeline]]]], Id: ProjectPipelineTarget,
+          RoleArn: !GetAtt 'SourceEventRole.Arn'}]
+    Type: AWS::Events::Rule
+  SourceEventRole:
+    Description: IAM role to allow Amazon CloudWatch Events to trigger AWS CodePipeline execution
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement: [{
+Action: 'sts:AssumeRole',
+Effect: Allow, Principal: {Service: [
+                events.amazonaws.com]}, Sid: 1}]
+      Policies: [{PolicyDocument: {Statement: [{
+Action: ['codepipeline:StartPipelineExecution'],
+
+Effect: Allow,
+Resource: [!Join [':', [arn, aws, codepipeline, !Ref 'AWS::Region',
+                      !Ref 'AWS::AccountId', !Join ['-', [!Ref 'ProjectId', Pipeline]]]]]}]},
+          PolicyName: CodeStarWorkerCloudWatchEventPolicy}]
+      RoleName: !Join ['-', [CodeStarWorker, !Ref 'ProjectId', CloudWatchEventRule]]
+    Type: AWS::IAM::Role
+  SyncInitial
+Resources:
+    DependsOn: [SeedRepo]
+    Description: Adding the AWS CodeCommit repository to your AWS CodeStar project.
+    Properties:
+      ProjectId: !Ref 'ProjectId'
+    Type: AWS::CodeStar::Sync
+Resources
+    Version: 1.0
+  Sync
+Resources:
+    DependsOn: [SeedRepo, EBEnvironment, ProjectPipeline, SyncInitial
+Resources]
+    Description: Adding all created resources to your AWS CodeStar project
+    Properties:
+      ProjectId: !Ref 'ProjectId'
+    Type: AWS::CodeStar::Sync
+Resources
+    Version: 1.0
