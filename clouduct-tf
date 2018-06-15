@@ -7,6 +7,7 @@ ALL_PHASES="commons network storage compute build"
 ALL_ENVS="dev test int prod"
 
 DEFAULT_ENVIRONMENT=dev
+DEFAULT_COMMAND=plan
 
 # --------------------------------------------------------------------------------------------------
 # PREPARE
@@ -33,6 +34,7 @@ if [[ -z $TF_VAR_project_name ]]; then
   echo "should have been set in $TWRAP_CONFIG_FILE"
   exit 1
 fi
+export TF_VAR_project_name
 
 if [[ -z $TF_VAR_region ]]; then
   echo "missing environment variable TF_VAR_region"
@@ -40,11 +42,9 @@ if [[ -z $TF_VAR_region ]]; then
   exit 1
 fi
 
-
-ALL_PHASES_ALT="${ALL_PHASES// /|}"
-ALL_ENVS_ALT="${ALL_ENVS// /|}"
-
 usage() {
+  local ALL_PHASES_ALT="${ALL_PHASES// /|}"
+  local ALL_ENVS_ALT="${ALL_ENVS// /|}"
   echo "Usage:"
   echo "  ${BASENAME} [env] [phase] [command]"
   echo "  "
@@ -69,27 +69,39 @@ contains() {
   fi
 }
 
-# allow to use the variable as match against possible command line arguments:
-shopt -s extglob
-ALL_PHASES_TEST="+($ALL_PHASES_ALT)"
-ALL_ENVS_TEST="+($ALL_ENVS_ALT)"
+
+# --------------------------------------------------------------------------------------------------
+# ARGUMENT HANDLING
+# --------------------------------------------------------------------------------------------------
 
 if contains "$1" "$ALL_ENVS" ; then
   TF_VAR_environment="$1"
   shift
-elif [[ -z $TF_VAR_environment ]]; then
-  TF_VAR_environment="$DEFAULT_ENVIRONMENT"
 fi
+TF_VAR_environment=${TF_VAR_environment:-$DEFAULT_ENVIRONMENT}
 
 while contains "$1" "$ALL_PHASES"; do
   PHASES="$1 $PHASES"
   shift
 done
+if [[ "${PHASES}" = "" ]]; then
+  PHASES_IN_EXEC_ORDER=$ALL_PHASES
+else
+  # ensure the phasess are in the correct order
+  PHASES=$(echo "$PHASES" | sed -e 's/ $//' -e 's/ /\|/')
+  for phase in $ALL_PHASES; do
+    if [[ $phase =~ .*${PHASES}.* ]]; then
+      PHASES_IN_EXEC_ORDER="$PHASES_IN_EXEC_ORDER $phase"
+    fi
+  done
+fi
+PHASES_IN_EXEC_ORDER=$(trim $PHASES_IN_EXEC_ORDER)
 
 if contains "$1" "bootstrap plan apply destroy"; then
   command="$1"
   shift
 fi
+command=${command:-${DEFAULT_COMMAND}}
 
 if [[ "$1" == "--help" ]]; then
   usage
@@ -103,30 +115,16 @@ if [[ $# -gt 0 ]]; then
   exit 1
 fi
 
-# default command: plan
-command=${command:-plan}
-
-if [[ "${PHASES}" = "" ]]; then
-  PHASES_IN_EXEC_ORDER=$ALL_PHASES
-else
-  # ensure the phasess are in the correct order
-  PHASES=$(echo "$PHASES" | sed -e 's/ $//' -e 's/ /\|/')
-  for phase in $ALL_PHASES; do
-    if [[ $phase =~ .*${PHASES}.* ]]; then
-      PHASES_IN_EXEC_ORDER="$PHASES_IN_EXEC_ORDER $phase"
-    fi
-  done
-fi
-
-PHASES_IN_EXEC_ORDER=$(trim $PHASES_IN_EXEC_ORDER)
-
-INFRA_DIR="$( cd "$( dirname "$0" )" && pwd )"
-
-TF_PLUGIN_CACHE_DIR=${INFRA_DIR}/.terraform.d/plugin_cache
 
 # --------------------------------------------------------------------------------------------------
 # EXECUTE
 # --------------------------------------------------------------------------------------------------
+
+export TF_VAR_bucket="${TF_VAR_project_name}-clouduct-terraform"
+
+INFRA_DIR="$( cd "$( dirname "$0" )" && pwd )"
+
+TF_PLUGIN_CACHE_DIR=${INFRA_DIR}/.terraform.d/plugin_cache
 
 if [[ $command == "bootstrap" ]]; then
 
@@ -147,8 +145,7 @@ else
     # echo "${INFRA_DIR}/$phase"
     pushd "${INFRA_DIR}/$phase" > /dev/null
 
-    export TF_VAR_bucket="${TF_VAR_project_name}-clouduct-terraform"
-    echo "state bucket: $TF_VAR_bucket"
+    echo "terraform state bucket: $TF_VAR_bucket"
 
     if [[ $phase = "commons" ]]; then
       KEY="commons"

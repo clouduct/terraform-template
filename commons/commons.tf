@@ -9,11 +9,6 @@ variable "region" {
   default = "eu-central-1"
 }
 
-variable "environments" {
-  type = "list"
-  default = ["dev", "stage", "prod"]
-}
-
 variable "project_name" {
 }
 
