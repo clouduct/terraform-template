@@ -13,7 +13,7 @@ DEFAULT_COMMAND=plan
 # PREPARE
 # --------------------------------------------------------------------------------------------------
 
-TWRAP_CONFIG_FILE=".clouduct-tf"
+CLOUDUCT_CONFIG_FILE=".clouduct-tf"
 
 # ensure we're executing in the correct directory
 SCRIPT_DIR=$(cd "$(dirname "$0")"; pwd)
@@ -22,23 +22,24 @@ cd "${SCRIPT_DIR}"
 BASENAME=$(basename "$0")
 
 # check for existence of config file
-if [ -e "$TWRAP_CONFIG_FILE" ]; then
-  source "${TWRAP_CONFIG_FILE}"
+if [ -e "$CLOUDUCT_CONFIG_FILE" ]; then
+  # shellcheck source=.clouduct-tf
+  source "${CLOUDUCT_CONFIG_FILE}"
 else
-  echo "Could not find configuration file ${TWRAP_CONFIG_FILE}"
+  echo "Could not find configuration file ${CLOUDUCT_CONFIG_FILE}"
   exit 1
 fi
 
 if [[ -z $TF_VAR_project_name ]]; then
   echo "missing environment variable TF_VAR_project_name"
-  echo "should have been set in $TWRAP_CONFIG_FILE"
+  echo "should have been set in $CLOUDUCT_CONFIG_FILE"
   exit 1
 fi
 export TF_VAR_project_name
 
 if [[ -z $TF_VAR_region ]]; then
   echo "missing environment variable TF_VAR_region"
-  echo "should have been set in $TWRAP_CONFIG_FILE"
+  echo "should have been set in $CLOUDUCT_CONFIG_FILE"
   exit 1
 fi
 
@@ -62,7 +63,8 @@ contains() {
   local item="$1"
   local list="$2"
 
-  if [[ " $list " =~ " $item " ]]; then
+  if [[ " $list " = *" $item "* ]]; then
+  # if [[ " $list " =~ " $item " ]]; then
     return 0
   else
     return 1
@@ -73,6 +75,18 @@ contains() {
 # --------------------------------------------------------------------------------------------------
 # ARGUMENT HANDLING
 # --------------------------------------------------------------------------------------------------
+
+if [[ "$1" == "--help" ]]; then
+  usage
+  exit 0
+fi
+
+if contains "$1" "bootstrap plan apply destroy"; then
+  command="$1"
+  shift
+fi
+command=${command:-${DEFAULT_COMMAND}}
+
 
 if contains "$1" "$ALL_ENVS" ; then
   TF_VAR_environment="$1"
@@ -95,18 +109,8 @@ else
     fi
   done
 fi
-PHASES_IN_EXEC_ORDER=$(trim $PHASES_IN_EXEC_ORDER)
+PHASES_IN_EXEC_ORDER=$(trim "$PHASES_IN_EXEC_ORDER")
 
-if contains "$1" "bootstrap plan apply destroy"; then
-  command="$1"
-  shift
-fi
-command=${command:-${DEFAULT_COMMAND}}
-
-if [[ "$1" == "--help" ]]; then
-  usage
-  exit 0
-fi
 
 if [[ $# -gt 0 ]]; then
   echo "unknown parameter(s) $*"
@@ -139,20 +143,34 @@ if [[ $command == "bootstrap" ]]; then
 
 else
 
-  echo "$TF_VAR_project_name env: ($TF_VAR_environment) phases: ($PHASES_IN_EXEC_ORDER) command: ($command)"
+  echo "CLOUDUCT INFO: project: $TF_VAR_project_name  --  env: ($TF_VAR_environment)  --  phases: ($PHASES_IN_EXEC_ORDER) command: ($command)"
+
+  PHASE_COUNT=0
 
   for phase in ${PHASES_IN_EXEC_ORDER}; do
     # echo "${INFRA_DIR}/$phase"
-    pushd "${INFRA_DIR}/$phase" > /dev/null
+    PHASE_COUNT=$(( PHASE_COUNT + 1 ))
 
-    echo "terraform state bucket: $TF_VAR_bucket"
+    if (( PHASE_COUNT > 1 )); then
+      if [[ $command = 'plan' ]]; then
+        echo "CLOUDUCT WARN: You are 'plan'-ing multiple phases."
+        echo "               If a later phase depends on a change being applied"
+        echo "               in an earlier phase, it will not have happend."
+        echo "               You need to 'apply' that earlier phase first"
+      fi
+    fi
+
+    pushd "${INFRA_DIR}/$phase" > /dev/null
 
     if [[ $phase = "commons" ]]; then
       KEY="commons"
     else
       KEY=${TF_VAR_environment}/${phase}
     fi
-    echo "key: ${KEY}"
+    # echo "key: ${KEY}"
+
+    # https://s3.eu-central-1.amazonaws.com/
+    echo "CLOUDUCT INFO: terraform state: https://s3.${TF_VAR_region}.amazonaws.com/${TF_VAR_bucket}/${KEY}"
 
     terraform init -reconfigure \
       -backend-config="region=${TF_VAR_region}" \
