@@ -3,7 +3,7 @@
 set -e
 
 
-ALL_PHASES="commons network storage compute build"
+ALL_PHASES="global network storage compute build"
 ALL_ENVS="dev test int prod"
 
 DEFAULT_ENVIRONMENT=dev
@@ -162,8 +162,8 @@ else
 
     pushd "${INFRA_DIR}/$phase" > /dev/null
 
-    if [[ $phase = "commons" ]]; then
-      KEY="commons"
+    if [[ $phase = "global" ]]; then
+      KEY="global"
     else
       KEY=${TF_VAR_environment}/${phase}
     fi

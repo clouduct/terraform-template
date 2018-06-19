@@ -1,8 +1,8 @@
-data "terraform_remote_state" "commons" {
+data "terraform_remote_state" "global" {
   backend = "s3"
   config {
     bucket = "${var.bucket}"
-    key = "commons"
+    key = "global"
     region = "${var.region}"
   }
 }
