@@ -1,5 +1,5 @@
 resource "aws_codebuild_project" "clouduct" {
-  name = "${var.project_name}-cb"
+  name = "${var.project_name}-${var.environment}-cb"
 
   artifacts {
     type = "CODEPIPELINE"
@@ -240,6 +240,24 @@ resource "aws_codepipeline" "codepipeline" {
 
       configuration {
         ProjectName = "${aws_codebuild_project.clouduct.name}"
+      }
+    }
+  }
+
+  stage {
+  name = "Deploy"
+
+    action {
+      name = "Deploy"
+      category = "Deploy"
+      owner = "AWS"
+      provider = "ElasticBeanstalk"
+      input_artifacts = ["${var.project_name}-deployable"]
+      version = "1"
+
+      configuration {
+        ApplicationName = "${data.terraform_remote_state.global.beanstalk_application_name}"
+        EnvironmentName = "${data.terraform_remote_state.compute.beanstalk_environment_name}"
       }
     }
   }
