@@ -9,6 +9,19 @@ ALL_ENVS="dev test int prod"
 DEFAULT_ENVIRONMENT=dev
 DEFAULT_COMMAND=plan
 
+DRY_RUN=false
+
+# colour warnings and errors?
+if [ -t 1 ]; then
+  COLOR_WARN='\E[1;31m'
+  COLOR_INFO='\E[0;34m'
+  NO_COLOR='\E[0m'
+else
+  COLOR_WARN=''
+  COLOR_INFO=''
+  NO_COLOR=''
+fi
+
 # --------------------------------------------------------------------------------------------------
 # PREPARE
 # --------------------------------------------------------------------------------------------------
@@ -55,10 +68,13 @@ usage() {
   echo "  "
 }
 
+# trims leading and trailing spaces of the given string
 trim() {
   echo "$*" | sed -e 's/ $//' -e 's/^ //'
 }
 
+# checks whether the first argument (a word) is in the list of words given as second argument
+# (the list of words must be quoted)
 contains() {
   local item="$1"
   local list="$2"
@@ -71,6 +87,21 @@ contains() {
   fi
 }
 
+# reverses a list of words given as parameters
+reverse() {
+  for (( i = ${#*}; i > 0; i-- ))
+  {
+    echo ${!i}
+  }
+}
+
+info() {
+  echo -e "${COLOR_INFO}$1${NO_COLOR}"
+}
+warn() {
+  echo -e "${COLOR_WARN}$1${NO_COLOR}"
+}
+
 
 # --------------------------------------------------------------------------------------------------
 # ARGUMENT HANDLING
@@ -79,6 +110,11 @@ contains() {
 if [[ "$1" == "--help" ]]; then
   usage
   exit 0
+fi
+
+if [[ "$1" == '-n' ]]; then
+  DRY_RUN=true
+  shift
 fi
 
 if contains "$1" "bootstrap plan apply destroy"; then
@@ -98,11 +134,13 @@ while contains "$1" "$ALL_PHASES"; do
   PHASES="$1 $PHASES"
   shift
 done
+
 if [[ "${PHASES}" = "" ]]; then
   PHASES_IN_EXEC_ORDER=$ALL_PHASES
 else
-  # ensure the phasess are in the correct order
-  PHASES=$(echo "$PHASES" | sed -e 's/ $//' -e 's/ /\|/')
+  # ensure the phases are in the correct order
+
+  PHASES=$(echo "$PHASES" | sed -e 's/ $//g' -e 's/ /\|/g')
   for phase in $ALL_PHASES; do
     if [[ $phase =~ .*${PHASES}.* ]]; then
       PHASES_IN_EXEC_ORDER="$PHASES_IN_EXEC_ORDER $phase"
@@ -110,7 +148,6 @@ else
   done
 fi
 PHASES_IN_EXEC_ORDER=$(trim "$PHASES_IN_EXEC_ORDER")
-
 
 if [[ $# -gt 0 ]]; then
   echo "unknown parameter(s) $*"
@@ -124,6 +161,10 @@ fi
 # EXECUTE
 # --------------------------------------------------------------------------------------------------
 
+if [[ "$DRY_RUN" = "true" ]]; then
+  echo "CLOUDUCT DEBUG: DRY RUN only (for script debugging)"
+fi
+
 export TF_VAR_bucket="${TF_VAR_project_name}-clouduct-terraform"
 
 INFRA_DIR="$( cd "$( dirname "$0" )" && pwd )"
@@ -136,27 +177,33 @@ if [[ $command == "bootstrap" ]]; then
 
   pushd "${INFRA_DIR}/bootstrap" > /dev/null
 
-  terraform init -reconfigure
-  terraform apply
+  if [[ ! "$DRY_RUN" = "true" ]]; then
+    terraform init -reconfigure
+    terraform apply
+  fi
 
   popd > /dev/null
 
 else
 
-  echo "CLOUDUCT INFO: project: $TF_VAR_project_name  --  env: ($TF_VAR_environment)  --  phases: ($PHASES_IN_EXEC_ORDER) command: ($command)"
+  info "CLOUDUCT INFO: project: $TF_VAR_project_name  --  env: ($TF_VAR_environment)  --  phases: ($PHASES_IN_EXEC_ORDER) command: ($command)"
 
   PHASE_COUNT=0
+
+  if [[ $command == "destroy" ]]; then
+    PHASES_IN_EXEC_ORDER=$(reverse $PHASES_IN_EXEC_ORDER)
+  fi
 
   for phase in ${PHASES_IN_EXEC_ORDER}; do
     # echo "${INFRA_DIR}/$phase"
     PHASE_COUNT=$(( PHASE_COUNT + 1 ))
 
-    if (( PHASE_COUNT > 1 )); then
+    if (( PHASE_COUNT == 2 )); then
       if [[ $command = 'plan' ]]; then
-        echo "CLOUDUCT WARN: You are 'plan'-ing multiple phases."
-        echo "               If a later phase depends on a change being applied"
-        echo "               in an earlier phase, it will not have happend."
-        echo "               You need to 'apply' that earlier phase first"
+        warn "CLOUDUCT WARN: You are 'plan'-ing multiple phases."
+        warn "               If a later phase depends on a change being applied"
+        warn "               in an earlier phase, it will not have happend."
+        warn "               You need to 'apply' that earlier phase first"
       fi
     fi
 
@@ -167,17 +214,18 @@ else
     else
       KEY=${TF_VAR_environment}/${phase}
     fi
-    # echo "key: ${KEY}"
 
-    # https://s3.eu-central-1.amazonaws.com/
-    echo "CLOUDUCT INFO: terraform state: https://s3.${TF_VAR_region}.amazonaws.com/${TF_VAR_bucket}/${KEY}"
+    # echo "CLOUDUCT DEBUG: terraform state: https://s3.${TF_VAR_region}.amazonaws.com/${TF_VAR_bucket}/${KEY}"
+    info "CLOUDUCT INFO: ${KEY}"
 
-    terraform init -reconfigure \
-      -backend-config="region=${TF_VAR_region}" \
-      -backend-config="bucket=${TF_VAR_bucket}" \
-      -backend-config="key=${KEY}"
+    if [[ ! "$DRY_RUN" = "true" ]]; then
+      terraform init -reconfigure \
+        -backend-config="region=${TF_VAR_region}" \
+        -backend-config="bucket=${TF_VAR_bucket}" \
+        -backend-config="key=${KEY}"
 
-    terraform "${command}"
+      terraform "${command}"
+    fi
 
     popd > /dev/null
 
