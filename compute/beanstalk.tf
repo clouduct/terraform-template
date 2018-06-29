@@ -1,3 +1,8 @@
+resource "aws_key_pair" "beanstalk_ssh" {
+  key_name = "beanstalk_ssh"
+  public_key = "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCkGsR1EK6I0prq5pSR6ln1i1pZ2A0LG7Z9M2fWSMrEjdPCb7lw7jgqFYt6Uv7wmAAtmxMm9Gz8csd2FBHkLxJxuK6Nu+vxBb96h9CTGR9frhXcpEULKG1oIIvboqnse7ds0gHlv8lTyX3ypdITj95y1aZQW3pnpadCgvG7HsaW99Lh12lJ7Hfj40k9uCgcn/Vqw5eLgf1Wm/p0LgxG0fVZ12oxlw3n4ZH35FGukhQEQ3SzMZWpB0WhrL9A5JX/DlMrO8Z7gpF+mNlsCgEP9jx3d5Hb4F96jfpPjC4xAfSXF0WmLAd1bCIVxkZyyiNy2u5xioEKaP2Y+fgwkA/NY1Qr dev@clouduct.org"
+}
+
 resource "aws_elastic_beanstalk_environment" "beanstalk_environment" {
   name = "${var.project_name}-${var.environment}-be"
   application = "${data.terraform_remote_state.global.beanstalk_application_name}"
@@ -13,6 +18,12 @@ resource "aws_elastic_beanstalk_environment" "beanstalk_environment" {
     namespace = "aws:elasticbeanstalk:environment"
     name      = "ServiceRole"
     value     = "${aws_iam_instance_profile.ec2_service.name}"
+  }
+
+  setting {
+    namespace = "aws:autoscaling:launchconfiguration"
+    name = "EC2KeyName"
+    value = "${aws_key_pair.beanstalk_ssh.id}"
   }
 }
 
