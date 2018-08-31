@@ -75,22 +75,26 @@ resource "aws_iam_instance_profile" "ec2_instanceprofile" {
 //__________
 
 resource "aws_iam_role" "eb_service_role" {
-  name = "${var.project_name}-${var.environment}-ec2-service-role"
+  name = "${var.project_name}-${var.environment}-eb-service-role"
   path = "/"
 
   assume_role_policy = <<EOF
 {
-    "Version": "2012-10-17",
-    "Statement": [
-        {
-            "Action": "sts:AssumeRole",
-            "Principal": {
-               "Service": "ec2.amazonaws.com"
-            },
-            "Effect": "Allow",
-            "Sid": ""
+  "Version": "2012-10-17",
+  "Statement": [
+      {
+        "Action": "sts:AssumeRole",
+        "Principal": {
+           "Service": "elasticbeanstalk.amazonaws.com"
+        },
+        "Effect": "Allow",
+        "Condition": {
+          "StringEquals": {
+            "sts:ExternalId": "elasticbeanstalk"
+          }
         }
-    ]
+     }
+  ]
 }
 EOF
 }
