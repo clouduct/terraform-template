@@ -26,8 +26,6 @@ resource "aws_elastic_beanstalk_environment" "beanstalk_environment" {
     name = "EC2KeyName"
     value = "${aws_key_pair.beanstalk_ssh.id}"
   }
-
-  depends_on = ["aws_iam_instance_profile.ec2_instanceprofile"]
 }
 
 output "beanstalk_environment_name" {
