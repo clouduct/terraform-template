@@ -55,12 +55,12 @@ resource "aws_iam_role" "ec2_instance_role" {
 EOF
 }
 
-resource "aws_iam_role_policy_attachment" "ec2_instanceprofile_attach1" {
+resource "aws_iam_role_policy_attachment" "ec2_instanceprofile_poweruser" {
   role = "${aws_iam_role.ec2_instance_role.id}"
   policy_arn = "arn:aws:iam::aws:policy/PowerUserAccess"
 }
 
-resource "aws_iam_role_policy_attachment" "ec2_instanceprofile_attach2" {
+resource "aws_iam_role_policy_attachment" "ec2_instanceprofile_beanstalk" {
   role = "${aws_iam_role.ec2_instance_role.id}"
   policy_arn = "arn:aws:iam::aws:policy/AWSElasticBeanstalkWorkerTier"
 }
