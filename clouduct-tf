@@ -224,7 +224,7 @@ else
         -backend-config="bucket=${TF_VAR_bucket}" \
         -backend-config="key=${KEY}"
 
-      terraform "${command}"
+      terraform "${command}" -var "environment=${TF_VAR_environment}"
     fi
 
     popd > /dev/null
